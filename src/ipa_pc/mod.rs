@@ -450,6 +450,24 @@ where
         Ok((comms, rands))
     }
 
+    /// dummy commit
+    fn commit_gpu<'a>(
+        ck: &Self::CommitterKey,
+        polynomials: impl IntoIterator<Item = &'a LabeledPolynomial<G::ScalarField, P>>,
+        rng: Option<&mut dyn RngCore>,
+    ) -> Result<
+        (
+            Vec<LabeledCommitment<Self::Commitment>>,
+            Vec<Self::Randomness>,
+        ),
+        Self::Error,
+    >
+    where
+        P: 'a 
+    {
+        unimplemented!()
+    }
+
     fn open_individual_opening_challenges<'a>(
         ck: &Self::CommitterKey,
         labeled_polynomials: impl IntoIterator<Item = &'a LabeledPolynomial<G::ScalarField, P>>,

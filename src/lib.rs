@@ -7,7 +7,7 @@
 #![deny(missing_docs)]
 #![deny(unused_imports)]
 #![deny(renamed_and_removed_lints, stable_features, unused_allocation)]
-#![deny(unused_comparisons, bare_trait_objects, unused_must_use, const_err)]
+#![deny(unused_comparisons, bare_trait_objects, unused_must_use)]
 #![forbid(unsafe_code)]
 
 #[macro_use]
@@ -186,6 +186,21 @@ pub trait PolynomialCommitment<F: Field, P: Polynomial<F>>: Sized {
     /// If for some `i`, `polynomials[i].degree_bound().is_some()`, then that
     /// polynomial will have the corresponding degree bound enforced.
     fn commit<'a>(
+        ck: &Self::CommitterKey,
+        polynomials: impl IntoIterator<Item = &'a LabeledPolynomial<F, P>>,
+        rng: Option<&mut dyn RngCore>,
+    ) -> Result<
+        (
+            Vec<LabeledCommitment<Self::Commitment>>,
+            Vec<Self::Randomness>,
+        ),
+        Self::Error,
+    >
+    where
+        P: 'a;
+
+    /// commit with GPU
+    fn commit_gpu<'a>(
         ck: &Self::CommitterKey,
         polynomials: impl IntoIterator<Item = &'a LabeledPolynomial<F, P>>,
         rng: Option<&mut dyn RngCore>,

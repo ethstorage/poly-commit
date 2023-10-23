@@ -335,6 +335,73 @@ where
         Ok((labeled_comms, randomness))
     }
 
+    /// Outputs a commitment to `polynomial`.
+    fn commit_gpu<'a>(
+        ck: &Self::CommitterKey,
+        polynomials: impl IntoIterator<Item = &'a LabeledPolynomial<E::Fr, P>>,
+        rng: Option<&mut dyn RngCore>,
+    ) -> Result<
+        (
+            Vec<LabeledCommitment<Self::Commitment>>,
+            Vec<Self::Randomness>,
+        ),
+        Self::Error,
+    >
+    where
+        P: 'a
+    {
+        let rng = &mut crate::optional_rng::OptionalRng(rng);
+        let commit_time = start_timer!(|| "Committing to polynomials");
+        let mut labeled_comms: Vec<LabeledCommitment<Self::Commitment>> = Vec::new();
+        let mut randomness: Vec<Self::Randomness> = Vec::new();
+
+        for labeled_polynomial in polynomials {
+            let enforced_degree_bounds: Option<&[usize]> = ck
+                .enforced_degree_bounds
+                .as_ref()
+                .map(|bounds| bounds.as_slice());
+
+            kzg10::KZG10::<E, P>::check_degrees_and_bounds(
+                ck.supported_degree(),
+                ck.max_degree,
+                enforced_degree_bounds,
+                &labeled_polynomial,
+            )?;
+
+            let polynomial: &P = labeled_polynomial.polynomial();
+            let degree_bound = labeled_polynomial.degree_bound();
+            let hiding_bound = labeled_polynomial.hiding_bound();
+            let label = labeled_polynomial.label();
+
+            let commit_time = start_timer!(|| format!(
+                "Polynomial {} of degree {}, degree bound {:?}, and hiding bound {:?}",
+                label,
+                polynomial.degree(),
+                degree_bound,
+                hiding_bound,
+            ));
+
+            let powers = if let Some(degree_bound) = degree_bound {
+                ck.shifted_powers(degree_bound).unwrap()
+            } else {
+                ck.powers()
+            };
+
+            let (comm, rand) = kzg10::KZG10::commit_gpu(&powers, polynomial, hiding_bound, Some(rng))?;
+
+            labeled_comms.push(LabeledCommitment::new(
+                label.to_string(),
+                comm,
+                degree_bound,
+            ));
+            randomness.push(rand);
+            end_timer!(commit_time);
+        }
+
+        end_timer!(commit_time);
+        Ok((labeled_comms, randomness))
+    }
+
     fn open_individual_opening_challenges<'a>(
         ck: &Self::CommitterKey,
         labeled_polynomials: impl IntoIterator<Item = &'a LabeledPolynomial<E::Fr, P>>,

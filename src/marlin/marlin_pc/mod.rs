@@ -241,6 +241,24 @@ where
         Ok((commitments, randomness))
     }
 
+    /// dummy commit
+    fn commit_gpu<'a>(
+        ck: &Self::CommitterKey,
+        polynomials: impl IntoIterator<Item = &'a LabeledPolynomial<E::Fr, P>>,
+        rng: Option<&mut dyn RngCore>,
+    ) -> Result<
+        (
+            Vec<LabeledCommitment<Self::Commitment>>,
+            Vec<Self::Randomness>,
+        ),
+        Self::Error,
+    >
+    where
+        P: 'a 
+    {
+        unimplemented!()
+    }
+
     /// On input a polynomial `p` and a point `point`, outputs a proof for the same.
     fn open_individual_opening_challenges<'a>(
         ck: &Self::CommitterKey,
