@@ -234,11 +234,20 @@ where
         let random_ints = convert_to_bigints(&randomness.blinding_polynomial.coeffs());
         let msm_time = start_timer!(|| "MSM to compute commitment to random poly");
 
-        let buffer = vec![(&powers.powers_of_g[num_leading_zeros..], plain_coeffs.as_slice()), (&powers.powers_of_gamma_g, random_ints.as_slice())];
+        let buffer: Vec<(&[<E as PairingEngine>::G1Affine], &[<<E as PairingEngine>::Fr as PrimeField>::BigInt])> = vec![(&powers.powers_of_g[num_leading_zeros..], plain_coeffs.as_slice()), (&powers.powers_of_gamma_g, random_ints.as_slice())];
+        // let commits = buffer.par_iter().map(|(power, scalar)|{
+        //     VariableBaseMSM::multi_scalar_mul(power, scalar)
+        // }).collect::<Vec<_>>();
+        // let mut commitment_cpu = commits[0];
+
         let commits = buffer.par_iter().map(|(power, scalar)|{
-            VariableBaseMSM::multi_scalar_mul(power, scalar)
+            msm_cuda::multi_scalar_mult_arkworks(power, scalar)
         }).collect::<Vec<_>>();
         let mut commitment = commits[0];
+        
+        //check cpu & gpu commitments are equal
+        // assert_eq!(commitment_cpu, commitment);
+
         let random_commitment = commits[1].into_affine();
         end_timer!(msm_time);
 
@@ -486,7 +495,8 @@ where
     }
 }
 
-fn skip_leading_zeros_and_convert_to_bigints<F: PrimeField, P: UVPolynomial<F>>(
+///
+pub fn skip_leading_zeros_and_convert_to_bigints<F: PrimeField, P: UVPolynomial<F>>(
     p: &P,
 ) -> (usize, Vec<F::BigInt>) {
     let mut num_leading_zeros = 0;
@@ -497,7 +507,8 @@ fn skip_leading_zeros_and_convert_to_bigints<F: PrimeField, P: UVPolynomial<F>>(
     (num_leading_zeros, coeffs)
 }
 
-fn convert_to_bigints<F: PrimeField>(p: &[F]) -> Vec<F::BigInt> {
+///
+pub fn convert_to_bigints<F: PrimeField>(p: &[F]) -> Vec<F::BigInt> {
     let to_bigint_time = start_timer!(|| "Converting polynomial coeffs to bigints");
     let coeffs = ark_std::cfg_iter!(p)
         .map(|s| s.into_repr())

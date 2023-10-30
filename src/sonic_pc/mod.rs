@@ -1,9 +1,11 @@
+use crate::kzg10::{convert_to_bigints, skip_leading_zeros_and_convert_to_bigints};
 use crate::{kzg10, PCCommitterKey};
 use crate::{BTreeMap, BTreeSet, String, ToString, Vec};
 use crate::{BatchLCProof, Error, Evaluations, QuerySet, UVPolynomial};
 use crate::{LabeledCommitment, LabeledPolynomial, LinearCombination};
 use crate::{PCRandomness, PCUniversalParams, PolynomialCommitment};
 
+// use ark_ec::msm::VariableBaseMSM;
 use ark_ec::{AffineCurve, PairingEngine, ProjectiveCurve};
 use ark_ff::{One, PrimeField, UniformRand, Zero};
 use ark_std::rand::RngCore;
@@ -11,6 +13,8 @@ use ark_std::{convert::TryInto, marker::PhantomData, ops::Div, vec};
 
 mod data_structures;
 pub use data_structures::*;
+#[cfg(feature = "parallel")]
+use rayon::prelude::*;
 
 /// Polynomial commitment based on [[KZG10]][kzg], with degree enforcement and
 /// batching taken from [[MBKM19, “Sonic”]][sonic] (more precisely, their
@@ -350,12 +354,13 @@ where
     where
         P: 'a
     {
-        let rng = &mut crate::optional_rng::OptionalRng(rng);
+        let mut rng = &mut crate::optional_rng::OptionalRng(rng);
         let commit_time = start_timer!(|| "Committing to polynomials");
-        let mut labeled_comms: Vec<LabeledCommitment<Self::Commitment>> = Vec::new();
         let mut randomness: Vec<Self::Randomness> = Vec::new();
 
-        for labeled_polynomial in polynomials {
+        let mut all_buffer = vec![];
+
+        for labeled_polynomial in  polynomials {
             let enforced_degree_bounds: Option<&[usize]> = ck
                 .enforced_degree_bounds
                 .as_ref()
@@ -387,17 +392,65 @@ where
                 ck.powers()
             };
 
-            let (comm, rand) = kzg10::KZG10::commit_gpu(&powers, polynomial, hiding_bound, Some(rng))?;
 
-            labeled_comms.push(LabeledCommitment::new(
-                label.to_string(),
-                comm,
-                degree_bound,
-            ));
+            let (num_leading_zeros, plain_coeffs) =
+            skip_leading_zeros_and_convert_to_bigints(polynomial);
+    
+            let mut rand = Randomness::<E::Fr, P>::empty();
+            if let Some(hiding_degree) = hiding_bound {
+                let sample_random_poly_time = start_timer!(|| format!(
+                    "Sampling a random polynomial of degree {}",
+                    hiding_degree
+                ));
+    
+                rand = Randomness::rand(hiding_degree, false, None, &mut rng);
+                kzg10::KZG10::<E,P>::check_hiding_bound(
+                    rand.blinding_polynomial.degree(),
+                    powers.powers_of_gamma_g.len(),
+                )?;
+                end_timer!(sample_random_poly_time);
+            }
+            let random_ints = convert_to_bigints(&rand.blinding_polynomial.coeffs());
+
             randomness.push(rand);
             end_timer!(commit_time);
+ 
+            let item = (plain_coeffs, random_ints, num_leading_zeros, powers,degree_bound, label.to_string() );
+
+            all_buffer.push(item);
         }
 
+        let labeled_comms = all_buffer.par_iter().map(|(plain_coeffs, random_ints, num_leading_zeros, powers,degree_bound, label )|{
+            let item = vec![
+                (&powers.powers_of_g[*num_leading_zeros..*num_leading_zeros + plain_coeffs.len()], plain_coeffs.as_slice()), 
+                (&powers.powers_of_gamma_g[..random_ints.len()], random_ints.as_slice())
+                ];
+            //cpu
+            // let mut commitment_cpu = VariableBaseMSM::multi_scalar_mul(
+            //     &powers.powers_of_g[*num_leading_zeros..],
+            //     &plain_coeffs,
+            // );
+            // let random_commitment_cpu =
+            // VariableBaseMSM::multi_scalar_mul(&powers.powers_of_gamma_g, random_ints.as_slice())
+            //     .into_affine();
+            // commitment_cpu.add_assign_mixed(&random_commitment_cpu);
+
+            //gpu
+            let commits = item.iter().map(|(scalar,power, )|{
+                msm_cuda::multi_scalar_mult_arkworks(scalar, power)
+            }).collect::<Vec<_>>();
+            let mut commitment = commits[0];
+            let random_commitment = commits[1].into_affine();
+            commitment.add_assign_mixed(&random_commitment);
+            //check cpu commit === gpu commit
+            // assert_eq!(commitment_cpu, commitment);
+
+            LabeledCommitment::<Self::Commitment>::new(
+                label.to_string(),
+                crate::kzg10::Commitment(commitment.into()),
+                *degree_bound,
+            )
+        }).collect::<Vec<_>>();
         end_timer!(commit_time);
         Ok((labeled_comms, randomness))
     }
