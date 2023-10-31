@@ -42,6 +42,9 @@ tracing = { version = "0.1", default-features = false, features = [ "attributes"
 path = "../sppark/poc/msm-cuda"
 features = ["default", "bls12_381"]
 
+[dependencies.sppark]
+path = "../sppark/rust"
+
 [dev-dependencies]
 ark-ed-on-bls12-381 = { version = "^0.3.0", default-features = false }
 ark-bls12-381 = { version = "^0.3.0", default-features = false, features = [ "curve" ] }
