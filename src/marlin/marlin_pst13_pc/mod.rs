@@ -554,6 +554,23 @@ where
         })
     }
 
+    fn open_individual_opening_challenges_gpu<'a>(
+        ck: &Self::CommitterKey,
+        labeled_polynomials: impl IntoIterator<Item = &'a LabeledPolynomial<E::Fr, P>>,
+        _commitments: impl IntoIterator<Item = &'a LabeledCommitment<Self::Commitment>>,
+        point: &P::Point,
+        opening_challenges: &dyn Fn(u64) -> E::Fr,
+        rands: impl IntoIterator<Item = &'a Self::Randomness>,
+        _rng: Option<&mut dyn RngCore>,
+    ) -> Result<Self::Proof, Self::Error>
+    where
+        P: 'a,
+        Self::Randomness: 'a,
+        Self::Commitment: 'a,
+    {
+        unimplemented!()
+    }
+
     /// Verifies that `value` is the evaluation at `x` of the polynomial
     /// committed inside `comm`.
     fn check_individual_opening_challenges<'a>(

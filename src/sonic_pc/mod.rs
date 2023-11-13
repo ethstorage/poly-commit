@@ -503,6 +503,58 @@ where
         Ok(proof)
     }
 
+    fn open_individual_opening_challenges_gpu<'a>(
+        ck: &Self::CommitterKey,
+        labeled_polynomials: impl IntoIterator<Item = &'a LabeledPolynomial<E::Fr, P>>,
+        _commitments: impl IntoIterator<Item = &'a LabeledCommitment<Self::Commitment>>,
+        point: &'a P::Point,
+        opening_challenges: &dyn Fn(u64) -> E::Fr,
+        rands: impl IntoIterator<Item = &'a Self::Randomness>,
+        _rng: Option<&mut dyn RngCore>,
+    ) -> Result<Self::Proof, Self::Error>
+    where
+        Self::Randomness: 'a,
+        Self::Commitment: 'a,
+        P: 'a,
+    {
+        let mut combined_polynomial = P::zero();
+        let mut combined_rand = kzg10::Randomness::empty();
+
+        let mut opening_challenge_counter = 0;
+
+        let mut curr_challenge = opening_challenges(opening_challenge_counter);
+        opening_challenge_counter += 1;
+
+        for (polynomial, rand) in labeled_polynomials.into_iter().zip(rands) {
+            let enforced_degree_bounds: Option<&[usize]> = ck
+                .enforced_degree_bounds
+                .as_ref()
+                .map(|bounds| bounds.as_slice());
+
+            kzg10::KZG10::<E, P>::check_degrees_and_bounds(
+                ck.supported_degree(),
+                ck.max_degree,
+                enforced_degree_bounds,
+                &polynomial,
+            )?;
+
+            combined_polynomial += (curr_challenge, polynomial.polynomial());
+            combined_rand += (curr_challenge, rand);
+            curr_challenge = opening_challenges(opening_challenge_counter);
+            opening_challenge_counter += 1;
+        }
+
+        let proof_time = start_timer!(|| "Creating proof for polynomials");
+
+        // let proof_cpu = kzg10::KZG10::open(&ck.powers(), &combined_polynomial, *point, &combined_rand)?;
+        let proof = kzg10::KZG10::open_gpu(&ck.powers(), &combined_polynomial, *point, &combined_rand)?;
+        // assert!( proof_cpu == proof);
+
+        end_timer!(proof_time);
+
+        Ok(proof)
+    }
+
     fn check_individual_opening_challenges<'a>(
         vk: &Self::VerifierKey,
         commitments: impl IntoIterator<Item = &'a LabeledCommitment<Self::Commitment>>,
