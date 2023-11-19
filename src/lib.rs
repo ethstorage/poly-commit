@@ -242,6 +242,34 @@ pub trait PolynomialCommitment<F: Field, P: Polynomial<F>>: Sized {
         )
     }
 
+    /// On input a list of labeled polynomials and a query point, `open` outputs a proof of evaluation
+    /// of the polynomials at the query point.
+    fn open_gpu<'a>(
+        ck: &Self::CommitterKey,
+        labeled_polynomials: impl IntoIterator<Item = &'a LabeledPolynomial<F, P>>,
+        commitments: impl IntoIterator<Item = &'a LabeledCommitment<Self::Commitment>>,
+        point: &'a P::Point,
+        opening_challenge: F,
+        rands: impl IntoIterator<Item = &'a Self::Randomness>,
+        rng: Option<&mut dyn RngCore>,
+    ) -> Result<Self::Proof, Self::Error>
+    where
+        P: 'a,
+        Self::Randomness: 'a,
+        Self::Commitment: 'a,
+    {
+        let opening_challenges = |pow| opening_challenge.pow(&[pow]);
+        Self::open_individual_opening_challenges_gpu(
+            ck,
+            labeled_polynomials,
+            commitments,
+            point,
+            &opening_challenges,
+            rands,
+            rng,
+        )
+    }
+
     /// On input a list of labeled polynomials and a query set, `open` outputs a proof of evaluation
     /// of the polynomials at the points in the query set.
     fn batch_open<'a>(
@@ -383,6 +411,21 @@ pub trait PolynomialCommitment<F: Field, P: Polynomial<F>>: Sized {
 
     /// open but with individual challenges
     fn open_individual_opening_challenges<'a>(
+        ck: &Self::CommitterKey,
+        labeled_polynomials: impl IntoIterator<Item = &'a LabeledPolynomial<F, P>>,
+        commitments: impl IntoIterator<Item = &'a LabeledCommitment<Self::Commitment>>,
+        point: &'a P::Point,
+        opening_challenges: &dyn Fn(u64) -> F,
+        rands: impl IntoIterator<Item = &'a Self::Randomness>,
+        rng: Option<&mut dyn RngCore>,
+    ) -> Result<Self::Proof, Self::Error>
+    where
+        P: 'a,
+        Self::Randomness: 'a,
+        Self::Commitment: 'a;
+
+    /// open but with individual challenges
+    fn open_individual_opening_challenges_gpu<'a>(
         ck: &Self::CommitterKey,
         labeled_polynomials: impl IntoIterator<Item = &'a LabeledPolynomial<F, P>>,
         commitments: impl IntoIterator<Item = &'a LabeledCommitment<Self::Commitment>>,

@@ -712,6 +712,23 @@ where
         })
     }
 
+    fn open_individual_opening_challenges_gpu<'a>(
+        ck: &Self::CommitterKey,
+        labeled_polynomials: impl IntoIterator<Item = &'a LabeledPolynomial<G::ScalarField, P>>,
+        commitments: impl IntoIterator<Item = &'a LabeledCommitment<Self::Commitment>>,
+        point: &'a P::Point,
+        opening_challenges: &dyn Fn(u64) -> G::ScalarField,
+        rands: impl IntoIterator<Item = &'a Self::Randomness>,
+        rng: Option<&mut dyn RngCore>,
+    ) -> Result<Self::Proof, Self::Error>
+    where
+        Self::Commitment: 'a,
+        Self::Randomness: 'a,
+        P: 'a,
+    {
+        unimplemented!()
+    }
+
     fn check_individual_opening_challenges<'a>(
         vk: &Self::VerifierKey,
         commitments: impl IntoIterator<Item = &'a LabeledCommitment<Self::Commitment>>,
